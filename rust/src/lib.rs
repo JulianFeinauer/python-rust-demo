@@ -1,3 +1,6 @@
+mod buffer;
+
+use std::any::Any;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 use std::ptr;
@@ -47,8 +50,29 @@ pub extern "C" fn point_print(point: *mut Point) -> *mut Point {
         };
         println!("{}", &b);
         Box::into_raw(b)
+    } else {
+        ptr::null_mut()
     }
-    ptr::null_mut()
+}
+
+#[repr(C)]
+pub struct Jenv {}
+#[repr(C)]
+pub struct Jobject {}
+
+#[no_mangle]
+pub extern "C" fn Java_Point_java_1point_1create(jenv: *mut Jenv, jobject: *mut Jobject, x: i32, y: i32) -> *mut Point {
+    point_new(x, y)
+}
+
+#[no_mangle]
+pub extern "C" fn Java_Point_java_1point_1print(jenv: *mut Jenv, jobject: *mut Jobject, point: *mut Point) -> *mut Point {
+    point_print(point)
+}
+
+#[no_mangle]
+pub extern "C" fn Java_Point_java_1point_1free(jenv: *mut Jenv, jobject: *mut Jobject, point: *mut Point) {
+    point_free(point)
 }
 
 #[cfg(test)]
