@@ -15,10 +15,10 @@ python main.py
 
 Compile java
 ```
-javac Point.java
+javac Point.java Main.java
 ```
 Now run java (and add path to rust lib)
 ```
-java -cp . -Djava.library.path=rust/target/release Point
+java -cp . -Djava.library.path=rust/target/release Main
 ```
 

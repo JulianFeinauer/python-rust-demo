@@ -13,7 +13,7 @@ public class Point implements AutoCloseable {
         }
     }
 
-    private long ptr;
+    private final long ptr;
 
     public Point(int x, int y) {
         this.ptr = java_point_create(x, y);
