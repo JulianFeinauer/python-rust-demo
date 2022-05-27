@@ -1,4 +1,4 @@
-from rust import lib
+from rust import lib, Point
 
 if __name__ == '__main__':
     lib.say_hello()
@@ -14,4 +14,9 @@ if __name__ == '__main__':
     # Super Dangerous, dont do that!
     lib.point_print(point)
 
+    # Now the more elegant way
+    print("We generate another point")
+    with Point(1, 1) as point:
+        point.print()
 
+    # now its freed up already
