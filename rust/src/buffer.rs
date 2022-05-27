@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::marker::PhantomData;
 
 #[allow(dead_code)]
 enum Endianess {
@@ -6,46 +7,49 @@ enum Endianess {
     BigEndian
 }
 
-pub struct WriteBuffer {
+pub struct WriteBuffer<'a, T: Write> {
     position: u64,
     endianness: Endianess,
-    // There can be a situation where only some bits are written, then we need a BitWriter
-    unfinished_byte: Option<u8>,
-    writer: dyn Write,
+    bit_writer: BitWriter<T>,
+    writer: &'a mut T,
 }
 
-pub struct BitWriter {
+pub struct BitWriter<T: Write> {
     position: u8,
     value: u8,
+    phantom: PhantomData<T>
 }
 
-impl BitWriter {
+impl<T: Write> BitWriter<T> {
 
     // Writes the given value as the given number of bits to the Bitwriter
     // If it "overflows" the "full" byte is returned
-    fn write<T: Write>(&mut self, value: u8, bits: u8, writer: &mut T) {
+    fn write(&mut self, value: u64, bits: u8, writer: &mut T)  -> std::io::Result<usize> {
+        let mut results: usize = 0;
         // Write until the byte is full or bits are over
         let mut bit_index: u8 = 0;
         loop {
             if self.position == 8 {
                 // Flush and then go to 0 again
-                self.flush(writer);
+                results += self.flush(writer)?;
             }
             if bit_index == bits {
                 break;
             }
-            let mask = ((value >> bit_index) & (0x01)) << self.position;
+            let mask = (((value >> bit_index) & (0x01)) << self.position) as u8;
             self.value = self.value | mask;
 
             bit_index += 1;
             self.position += 1;
         }
+        Ok(results)
     }
 
-    fn flush<T: Write>(&mut self, writer: &mut T) {
-        writer.write(&[self.value]);
+    fn flush(&mut self, writer: &mut T) -> std::io::Result<usize> {
+        let result = writer.write(&[self.value]);
         self.position = 0;
         self.value = 0;
+        result
     }
 
 }
@@ -67,16 +71,20 @@ macro_rules! write_int {
     };
 }
 
-impl WriteBuffer {
+impl<'a, T: Write> WriteBuffer<'a, T> {
 
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        let bytes_written = self.writer.write(&bytes)?;
+        let bytes_written = self.writer.write(bytes)?;
         self.position = self.position + bytes_written as u64;
         Ok(bytes_written)
     }
 
     pub fn write_u8(&mut self, x: u8) -> std::io::Result<usize> {
         self.write(&[x])
+    }
+
+    pub fn write_u_n(&mut self, num_bits: u8, value: u64) -> std::io::Result<usize> {
+        self.bit_writer.write(value, num_bits, &mut self.writer)
     }
 
     write_int!(write_u16, u16);
@@ -97,7 +105,8 @@ impl WriteBuffer {
 #[cfg(test)]
 mod test {
     use std::io::Write;
-    use crate::buffer::{BitWriter};
+    use std::marker::PhantomData;
+    use crate::buffer::{BitWriter, Endianess, WriteBuffer};
 
     #[test]
     fn test_it() {
@@ -120,7 +129,8 @@ mod test {
     fn test_write() {
         let mut writer = BitWriter {
             position: 0,
-            value: 0
+            value: 0,
+            phantom: Default::default()
         };
 
         let buffer: Vec<u8> = vec![];
@@ -152,7 +162,8 @@ mod test {
     fn test_write_byte() {
         let mut writer = BitWriter {
             position: 0,
-            value: 0
+            value: 0,
+            phantom: Default::default()
         };
 
         let mut bytes: Vec<u8> = vec![];
@@ -162,6 +173,31 @@ mod test {
         assert_eq!(writer.value, 0);
         assert_eq!(writer.position, 0);
         assert_eq!(*bytes.get(0).unwrap(), 0xFF);
+    }
+
+    #[test]
+    fn write_bit_via_writer() {
+        let mut bytes: Vec<u8> = vec![];
+
+        let mut bit_writer = BitWriter {
+            position: 0,
+            value: 0,
+            phantom: Default::default()
+        };
+
+        let mut writer = WriteBuffer {
+            position: 0,
+            endianness: Endianess::LittleEndian,
+            bit_writer: bit_writer,
+            writer: &mut bytes
+        };
+
+        &writer.write_u_n(9, 0xFFFF);
+        assert_eq!(writer.bit_writer.position, 1);
+        assert_eq!(writer.bit_writer.value, 0x01);
+
+        assert_eq!(*bytes.get(0).unwrap(), 0xFF);
+        assert_eq!(bytes.get(1), None);
     }
 }
 
